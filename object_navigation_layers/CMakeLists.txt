@@ -27,6 +27,7 @@ include_directories(
 add_library(object_layers
         src/simple_layer.cpp
         src/grid_layer.cpp
+        src/object_layer.cpp
 )
 # add_dependencies(object_layers ${${PROJECT_NAME}_EXPORTED_TARGETS})
 target_link_libraries(
