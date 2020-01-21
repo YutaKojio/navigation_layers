@@ -7,6 +7,10 @@ find_package(catkin REQUIRED COMPONENTS
   dynamic_reconfigure
   pluginlib
   roscpp
+  sensor_msgs
+  geometry_msgs
+  jsk_recognition_msgs
+  cv_bridge
 )
 
 # generate_dynamic_reconfigure_options(
@@ -28,6 +32,7 @@ add_library(object_layers
         src/simple_layer.cpp
         src/grid_layer.cpp
         src/object_layer.cpp
+        src/gradient_layer.cpp
 )
 # add_dependencies(object_layers ${${PROJECT_NAME}_EXPORTED_TARGETS})
 target_link_libraries(

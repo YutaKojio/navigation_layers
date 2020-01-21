@@ -8,4 +8,7 @@
   <class type="object_navigation_layers::ObjectLayer" base_class_type="costmap_2d::Layer">
     <description>Layer that marks all points of the target objects</description>
   </class>
+  <class type="object_navigation_layers::GradientLayer" base_class_type="costmap_2d::Layer">
+    <description>Heightmap Gradient Layer</description>
+  </class>
 </library>
