@@ -3,6 +3,7 @@
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
 #include <jsk_recognition_utils/pcl_conversion_util.h>
+#include <geometry_msgs/PointStamped.h>
 
 PLUGINLIB_EXPORT_CLASS(object_navigation_layers::GradientLayer, costmap_2d::Layer)
 
@@ -29,6 +30,10 @@ void GradientLayer::onInitialize()
 
   image_sub_ = nh.subscribe("/heightmap_gradient", 1, &GradientLayer::heightmapGradientCallback, this);
   config_sub_ = nh.subscribe("/accumulated_heightmap/output/config", 1, &GradientLayer::configCallback, this);
+
+  global_frame_ = layered_costmap_->getGlobalFrameID();
+  double transform_tolerance;
+  nh.param("transform_tolerance", transform_tolerance, 0.2);
 
 }
 
@@ -82,11 +87,32 @@ void GradientLayer::updateBounds(double robot_x, double robot_y, double robot_ya
   if(!flag_new_)
     return;
 
-  *min_x = std::min(*min_x, min_x_);
-  *min_y = std::min(*min_y, min_y_);
-  *max_x = std::max(*max_x, max_x_);
-  *max_y = std::max(*max_y, max_y_);
+  if(!layered_costmap_)
+    return;
 
+  double mark_x, mark_y;
+  double heightmap_resolution_x;
+  double heightmap_resolution_y;
+  heightmap_resolution_x =  1.0 * (max_x_ - min_x_) / width_;
+  heightmap_resolution_y =  1.0 * (max_y_ - min_y_) / height_;
+  geometry_msgs::PointStamped pt, opt;
+
+  for (int j = 0; j < height_; ++j) {
+    for (int i = 0; i < width_; ++i) {
+      pt.point.x = min_x_ + i * heightmap_resolution_x;
+      pt.point.y = min_y_ + j * heightmap_resolution_y;
+      pt.point.z = 0;
+      pt.header.frame_id = heightmap_gradient_msg_->header.frame_id;
+      tf_.transformPoint(global_frame_, pt, opt);
+      mark_x = opt.point.x;
+      mark_y = opt.point.y;
+
+      *min_x = std::min(*min_x, mark_x);
+      *min_y = std::min(*min_y, mark_y);
+      *max_x = std::max(*max_x, mark_x);
+      *max_y = std::max(*max_y, mark_y);
+    }
+  }
 }
 
 void GradientLayer::updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, int min_j, int max_i, int max_j)
@@ -103,6 +129,9 @@ void GradientLayer::updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, i
   if(!flag_new_)
     return;
 
+  if(!layered_costmap_)
+    return;
+
   // setCost is for set "current" cost, not for "accumulated" cost
   // To make accumulated cost map, use grid map ex) CostmapLayer::updateWithMax
   double mark_x, mark_y;
@@ -110,6 +139,7 @@ void GradientLayer::updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, i
   double heightmap_resolution_y;
   heightmap_resolution_x =  1.0 * (max_x_ - min_x_) / width_;
   heightmap_resolution_y =  1.0 * (max_y_ - min_y_) / height_;
+  geometry_msgs::PointStamped pt, opt;
   double scale = 20;
   double offset = 1;
   double raw_cost;
@@ -118,10 +148,14 @@ void GradientLayer::updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, i
 
   for (int j = 0; j < height_; ++j) {
     for (int i = 0; i < width_; ++i) {
-      mark_x = min_x_ + i * heightmap_resolution_x;
-      mark_y = min_y_ + j * heightmap_resolution_y;
+      pt.point.x = min_x_ + i * heightmap_resolution_x;
+      pt.point.y = min_y_ + j * heightmap_resolution_y;
+      pt.point.z = 0;
+      pt.header.frame_id = heightmap_gradient_msg_->header.frame_id;
+      tf_.transformPoint(global_frame_, pt, opt);
+      mark_x = opt.point.x;
+      mark_y = opt.point.y;
       raw_cost = heightmap_gradient_.at<float>(j, i) * scale - offset;
-      // if (i%100 == 5 && j%100 == 5) ROS_WARN("mark_x : %lf  mark_y : %lf  cost : %lf", mark_x, mark_y, raw_cost);
       cost = std::max(std::min((unsigned char)raw_cost, LETHAL_OBSTACLE), FREE_SPACE);
       if(master_grid.worldToMap(mark_x, mark_y, mx, my)) {
         master_grid.setCost(mx, my, cost);
