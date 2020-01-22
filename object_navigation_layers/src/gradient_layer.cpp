@@ -97,21 +97,32 @@ void GradientLayer::updateBounds(double robot_x, double robot_y, double robot_ya
   heightmap_resolution_y =  1.0 * (max_y_ - min_y_) / height_;
   geometry_msgs::PointStamped pt, opt;
 
-  for (int j = 0; j < height_; ++j) {
-    for (int i = 0; i < width_; ++i) {
-      pt.point.x = min_x_ + i * heightmap_resolution_x;
-      pt.point.y = min_y_ + j * heightmap_resolution_y;
-      pt.point.z = 0;
-      pt.header.frame_id = heightmap_gradient_msg_->header.frame_id;
-      tf_.transformPoint(global_frame_, pt, opt);
-      mark_x = opt.point.x;
-      mark_y = opt.point.y;
+  try {
+    for (int j = 0; j < height_; ++j) {
+      for (int i = 0; i < width_; ++i) {
+        pt.point.x = min_x_ + i * heightmap_resolution_x;
+        pt.point.y = min_y_ + j * heightmap_resolution_y;
+        pt.point.z = 0;
+        pt.header.frame_id = heightmap_gradient_msg_->header.frame_id;
+        tf_.transformPoint(global_frame_, pt, opt);
+        mark_x = opt.point.x;
+        mark_y = opt.point.y;
 
-      *min_x = std::min(*min_x, mark_x);
-      *min_y = std::min(*min_y, mark_y);
-      *max_x = std::max(*max_x, mark_x);
-      *max_y = std::max(*max_y, mark_y);
+        *min_x = std::min(*min_x, mark_x);
+        *min_y = std::min(*min_y, mark_y);
+        *max_x = std::max(*max_x, mark_x);
+        *max_y = std::max(*max_y, mark_y);
+      }
     }
+  }
+  catch(tf::LookupException& ex) {
+    ROS_ERROR("No Transform available Error: %s\n", ex.what());
+  }
+  catch(tf::ConnectivityException& ex) {
+    ROS_ERROR("Connectivity Error: %s\n", ex.what());
+  }
+  catch(tf::ExtrapolationException& ex) {
+    ROS_ERROR("Extrapolation Error: %s\n", ex.what());
   }
 }
 
@@ -146,21 +157,32 @@ void GradientLayer::updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, i
   unsigned char cost;
   unsigned int mx, my;
 
-  for (int j = 0; j < height_; ++j) {
-    for (int i = 0; i < width_; ++i) {
-      pt.point.x = min_x_ + i * heightmap_resolution_x;
-      pt.point.y = min_y_ + j * heightmap_resolution_y;
-      pt.point.z = 0;
-      pt.header.frame_id = heightmap_gradient_msg_->header.frame_id;
-      tf_.transformPoint(global_frame_, pt, opt);
-      mark_x = opt.point.x;
-      mark_y = opt.point.y;
-      raw_cost = heightmap_gradient_.at<float>(j, i) * scale - offset;
-      cost = std::max(std::min((unsigned char)raw_cost, LETHAL_OBSTACLE), FREE_SPACE);
-      if(master_grid.worldToMap(mark_x, mark_y, mx, my)) {
-        master_grid.setCost(mx, my, cost);
+  try {
+    for (int j = 0; j < height_; ++j) {
+      for (int i = 0; i < width_; ++i) {
+        pt.point.x = min_x_ + i * heightmap_resolution_x;
+        pt.point.y = min_y_ + j * heightmap_resolution_y;
+        pt.point.z = 0;
+        pt.header.frame_id = heightmap_gradient_msg_->header.frame_id;
+        tf_.transformPoint(global_frame_, pt, opt);
+        mark_x = opt.point.x;
+        mark_y = opt.point.y;
+        raw_cost = heightmap_gradient_.at<float>(j, i) * scale - offset;
+        cost = std::max(std::min((unsigned char)raw_cost, LETHAL_OBSTACLE), FREE_SPACE);
+        if(master_grid.worldToMap(mark_x, mark_y, mx, my)) {
+          master_grid.setCost(mx, my, cost);
+        }
       }
     }
+  }
+  catch(tf::LookupException& ex) {
+    ROS_ERROR("No Transform available Error: %s\n", ex.what());
+  }
+  catch(tf::ConnectivityException& ex) {
+    ROS_ERROR("Connectivity Error: %s\n", ex.what());
+  }
+  catch(tf::ExtrapolationException& ex) {
+    ROS_ERROR("Extrapolation Error: %s\n", ex.what());
   }
 
   flag_new_ = false;
