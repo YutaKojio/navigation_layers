@@ -7,6 +7,7 @@
 #include <dynamic_reconfigure/server.h>
 #include <jsk_recognition_utils/pcl_conversion_util.h>
 #include <jsk_recognition_msgs/HeightmapConfig.h>
+#include <tf/transform_listener.h>
 
 namespace object_navigation_layers
 {
@@ -46,7 +47,8 @@ private:
   double max_x_;
   double min_y_;
   double max_y_;
-  bool flag_new_;
+  tf::TransformListener listener_;
+  tf::StampedTransform transform_;
 };
 }
 #endif

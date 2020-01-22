@@ -68,8 +68,8 @@ void GradientLayer::heightmapGradientCallback(const sensor_msgs::Image::ConstPtr
   heightmap_gradient_ = cv_ptr->image;
   height_ = msg->height;
   width_ = msg->width;
-  flag_new_ = true;
-
+  listener_.lookupTransform(heightmap_gradient_msg_->header.frame_id, global_frame_,
+                            ros::Time(0), transform_);
 }
 
 void GradientLayer::updateBounds(double robot_x, double robot_y, double robot_yaw, double* min_x,
@@ -92,7 +92,6 @@ void GradientLayer::updateBounds(double robot_x, double robot_y, double robot_ya
   double heightmap_resolution_y;
   heightmap_resolution_x =  1.0 * (max_x_ - min_x_) / width_;
   heightmap_resolution_y =  1.0 * (max_y_ - min_y_) / height_;
-  geometry_msgs::PointStamped pt, opt;
   double scale = 20;
   double offset = 1;
   double raw_cost;
@@ -105,16 +104,23 @@ void GradientLayer::updateBounds(double robot_x, double robot_y, double robot_ya
 
   clock_t start = clock();
 
+  tf::Vector3 original_coords;
+  tf::Vector3 translation_vector;
+  tf::Matrix3x3 rotation_matrix;
+  tf::Vector3 target_coords;
+
   try {
+    translation_vector = transform_.getOrigin();
+    rotation_matrix = transform_.getBasis();
+
     for (int j = 0; j < height_; j+=3) {
       for (int i = 0; i < width_; i+=3) {
-        pt.point.x = min_x_ + i * heightmap_resolution_x;
-        pt.point.y = min_y_ + j * heightmap_resolution_y;
-        pt.point.z = 0;
-        pt.header.frame_id = heightmap_gradient_msg_->header.frame_id;
-        tf_.transformPoint(global_frame_, pt, opt);
-        mark_x = opt.point.x;
-        mark_y = opt.point.y;
+        original_coords.setValue(min_x_ + i * heightmap_resolution_x,
+                                 min_y_ + j * heightmap_resolution_y,
+                                 0.0);
+        target_coords = rotation_matrix.inverse() * (original_coords - translation_vector);
+        mark_x = target_coords.x();
+        mark_y = target_coords.y();
         raw_cost = heightmap_gradient.at<float>(j, i) * scale - offset;
         cost = std::max(std::min((unsigned char)raw_cost, LETHAL_OBSTACLE), FREE_SPACE);
 
