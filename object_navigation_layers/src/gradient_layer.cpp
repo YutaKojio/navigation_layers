@@ -84,9 +84,6 @@ void GradientLayer::updateBounds(double robot_x, double robot_y, double robot_ya
   if(!heightmap_gradient_msg_)
     return;
 
-  if(!flag_new_)
-    return;
-
   if(!layered_costmap_)
     return;
 
@@ -96,10 +93,21 @@ void GradientLayer::updateBounds(double robot_x, double robot_y, double robot_ya
   heightmap_resolution_x =  1.0 * (max_x_ - min_x_) / width_;
   heightmap_resolution_y =  1.0 * (max_y_ - min_y_) / height_;
   geometry_msgs::PointStamped pt, opt;
+  double scale = 20;
+  double offset = 1;
+  double raw_cost;
+  unsigned char cost;
+  unsigned int mx, my;
+  unsigned int index;
+
+  costmap_2d::Costmap2D* costmap = layered_costmap_->getCostmap();
+  cv::Mat heightmap_gradient = heightmap_gradient_;
+
+  clock_t start = clock();
 
   try {
-    for (int j = 0; j < height_; ++j) {
-      for (int i = 0; i < width_; ++i) {
+    for (int j = 0; j < height_; j+=3) {
+      for (int i = 0; i < width_; i+=3) {
         pt.point.x = min_x_ + i * heightmap_resolution_x;
         pt.point.y = min_y_ + j * heightmap_resolution_y;
         pt.point.z = 0;
@@ -107,6 +115,23 @@ void GradientLayer::updateBounds(double robot_x, double robot_y, double robot_ya
         tf_.transformPoint(global_frame_, pt, opt);
         mark_x = opt.point.x;
         mark_y = opt.point.y;
+        raw_cost = heightmap_gradient.at<float>(j, i) * scale - offset;
+        cost = std::max(std::min((unsigned char)raw_cost, LETHAL_OBSTACLE), FREE_SPACE);
+
+        if(costmap->worldToMap(mark_x, mark_y, mx, my)) {
+          index = my * size_x_ + mx;
+          // unsigned char old_cost = costmap_->getCost(mx, my);
+          unsigned char old_cost = costmap_[index];
+          if(old_cost == costmap_2d::NO_INFORMATION) {
+            // costmap_->SetCost(mx, my, cost);
+            costmap_[index] = cost;
+          }
+          else {
+            // costmap_->SetCost(mx, my, std::max(cost, old_cost));
+            // costmap_[index] = std::max(cost, old_cost);
+            costmap_[index] = cost;
+          }
+        }
 
         *min_x = std::min(*min_x, mark_x);
         *min_y = std::min(*min_y, mark_y);
@@ -124,6 +149,9 @@ void GradientLayer::updateBounds(double robot_x, double robot_y, double robot_ya
   catch(tf::ExtrapolationException& ex) {
     ROS_ERROR("Extrapolation Error: %s\n", ex.what());
   }
+  clock_t end = clock();
+  const double time = static_cast<double>(end - start) / CLOCKS_PER_SEC * 1000.0;
+  std::cerr << "updateBounds : " << time << " [ms]" << std::endl;
 }
 
 void GradientLayer::updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, int min_j, int max_i, int max_j)
@@ -137,57 +165,40 @@ void GradientLayer::updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, i
   if(!heightmap_gradient_msg_)
     return;
 
-  if(!flag_new_)
+  if(!costmap_)
     return;
 
   if(!layered_costmap_)
     return;
 
-  // setCost is for set "current" cost, not for "accumulated" cost
-  // To make accumulated cost map, use grid map ex) CostmapLayer::updateWithMax
-  double mark_x, mark_y;
-  double heightmap_resolution_x;
-  double heightmap_resolution_y;
-  heightmap_resolution_x =  1.0 * (max_x_ - min_x_) / width_;
-  heightmap_resolution_y =  1.0 * (max_y_ - min_y_) / height_;
-  geometry_msgs::PointStamped pt, opt;
-  double scale = 20;
-  double offset = 1;
-  double raw_cost;
-  unsigned char cost;
-  unsigned int mx, my;
+  clock_t start = clock();
 
-  try {
-    for (int j = 0; j < height_; ++j) {
-      for (int i = 0; i < width_; ++i) {
-        pt.point.x = min_x_ + i * heightmap_resolution_x;
-        pt.point.y = min_y_ + j * heightmap_resolution_y;
-        pt.point.z = 0;
-        pt.header.frame_id = heightmap_gradient_msg_->header.frame_id;
-        tf_.transformPoint(global_frame_, pt, opt);
-        mark_x = opt.point.x;
-        mark_y = opt.point.y;
-        raw_cost = heightmap_gradient_.at<float>(j, i) * scale - offset;
-        cost = std::max(std::min((unsigned char)raw_cost, LETHAL_OBSTACLE), FREE_SPACE);
-        if(master_grid.worldToMap(mark_x, mark_y, mx, my)) {
-          master_grid.setCost(mx, my, cost);
-        }
+  // update cost of master layer (with max)
+  unsigned char* master_array = master_grid.getCharMap();
+  unsigned int span = master_grid.getSizeInCellsX();
+
+  for (int j = min_j; j < max_j; j++)
+  {
+    unsigned int it = j * span + min_i;
+    for (int i = min_i; i < max_i; i++)
+    {
+      if (costmap_[it] == NO_INFORMATION){
+        it++;
+        continue;
       }
+
+      unsigned char old_cost = master_array[it];
+      if (old_cost == NO_INFORMATION || old_cost < costmap_[it])
+        master_array[it] = costmap_[it];
+      it++;
     }
   }
-  catch(tf::LookupException& ex) {
-    ROS_ERROR("No Transform available Error: %s\n", ex.what());
-  }
-  catch(tf::ConnectivityException& ex) {
-    ROS_ERROR("Connectivity Error: %s\n", ex.what());
-  }
-  catch(tf::ExtrapolationException& ex) {
-    ROS_ERROR("Extrapolation Error: %s\n", ex.what());
-  }
-
-  flag_new_ = false;
 
   ROS_WARN("Heightmap Cost Updated");
+  clock_t end = clock();
+  const double time = static_cast<double>(end - start) / CLOCKS_PER_SEC * 1000.0;
+  std::cerr << "updateCosts : " << time << " [ms]" << std::endl;
+
 }
 
 } // end namespace
