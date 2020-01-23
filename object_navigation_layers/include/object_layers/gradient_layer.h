@@ -8,6 +8,7 @@
 #include <jsk_recognition_utils/pcl_conversion_util.h>
 #include <jsk_recognition_msgs/HeightmapConfig.h>
 #include <tf/transform_listener.h>
+#include <object_navigation_layers/GradientLayerConfig.h>
 
 namespace object_navigation_layers
 {
@@ -29,8 +30,8 @@ public:
   virtual void matchSize();
 
 private:
-  void reconfigureCB(costmap_2d::GenericPluginConfig &config, uint32_t level);
-  dynamic_reconfigure::Server<costmap_2d::GenericPluginConfig> *dsrv_;
+  void reconfigureCB(object_navigation_layers::GradientLayerConfig &config, uint32_t level);
+  dynamic_reconfigure::Server<object_navigation_layers::GradientLayerConfig> *dsrv_;
   void configCallback(const jsk_recognition_msgs::HeightmapConfig::ConstPtr& msg);
   void heightmapGradientCallback(const sensor_msgs::Image::ConstPtr& msg);
   ros::Subscriber image_sub_;
@@ -49,6 +50,9 @@ private:
   double max_y_;
   tf::TransformListener listener_;
   tf::StampedTransform transform_;
+  double cost_scale_;
+  double cost_offset_;
+  int combination_method_;
 };
 }
 #endif

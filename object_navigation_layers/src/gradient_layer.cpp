@@ -23,8 +23,8 @@ void GradientLayer::onInitialize()
   default_value_ = NO_INFORMATION;
   matchSize();
 
-  dsrv_ = new dynamic_reconfigure::Server<costmap_2d::GenericPluginConfig>(nh);
-  dynamic_reconfigure::Server<costmap_2d::GenericPluginConfig>::CallbackType cb = boost::bind(
+  dsrv_ = new dynamic_reconfigure::Server<object_navigation_layers::GradientLayerConfig>(nh);
+  dynamic_reconfigure::Server<object_navigation_layers::GradientLayerConfig>::CallbackType cb = boost::bind(
       &GradientLayer::reconfigureCB, this, _1, _2);
   dsrv_->setCallback(cb);
 
@@ -46,9 +46,12 @@ void GradientLayer::matchSize()
 }
 
 
-void GradientLayer::reconfigureCB(costmap_2d::GenericPluginConfig &config, uint32_t level)
+void GradientLayer::reconfigureCB(object_navigation_layers::GradientLayerConfig &config, uint32_t level)
 {
   enabled_ = config.enabled;
+  cost_scale_ = config.cost_scale;
+  cost_offset_ = config.cost_offset;
+  combination_method_ = config.combination_method;
 }
 
 void GradientLayer::configCallback(const jsk_recognition_msgs::HeightmapConfig::ConstPtr& msg)
@@ -92,8 +95,6 @@ void GradientLayer::updateBounds(double robot_x, double robot_y, double robot_ya
   double heightmap_resolution_y;
   heightmap_resolution_x =  1.0 * (max_x_ - min_x_) / width_;
   heightmap_resolution_y =  1.0 * (max_y_ - min_y_) / height_;
-  double scale = 20;
-  double offset = 1;
   double raw_cost;
   unsigned char cost;
   unsigned int mx, my;
@@ -121,21 +122,28 @@ void GradientLayer::updateBounds(double robot_x, double robot_y, double robot_ya
         target_coords = rotation_matrix.inverse() * (original_coords - translation_vector);
         mark_x = target_coords.x();
         mark_y = target_coords.y();
-        raw_cost = heightmap_gradient.at<float>(j, i) * scale - offset;
+        raw_cost = heightmap_gradient.at<float>(j, i) * cost_scale_ - cost_offset_;
         cost = std::max(std::min((unsigned char)raw_cost, LETHAL_OBSTACLE), FREE_SPACE);
 
         if(costmap->worldToMap(mark_x, mark_y, mx, my)) {
           index = my * size_x_ + mx;
           // unsigned char old_cost = costmap_->getCost(mx, my);
           unsigned char old_cost = costmap_[index];
-          if(old_cost == costmap_2d::NO_INFORMATION) {
-            // costmap_->SetCost(mx, my, cost);
-            costmap_[index] = cost;
-          }
-          else {
-            // costmap_->SetCost(mx, my, std::max(cost, old_cost));
-            // costmap_[index] = std::max(cost, old_cost);
-            costmap_[index] = cost;
+          switch (combination_method_)
+          {
+           case 0:  // Overwrite
+             costmap_[index] = cost;
+             break;
+           case 1:  // Maximum
+             if(old_cost == costmap_2d::NO_INFORMATION) {
+               costmap_[index] = cost;
+             }
+             else {
+               costmap_[index] = std::max(cost, old_cost);
+             }
+             break;
+           default:  // Nothing
+             break;
           }
         }
 

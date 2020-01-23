@@ -13,9 +13,9 @@ find_package(catkin REQUIRED COMPONENTS
   cv_bridge
 )
 
-# generate_dynamic_reconfigure_options(
-#   cfg/ProxemicLayer.cfg
-# )
+generate_dynamic_reconfigure_options(
+  cfg/GradientLayer.cfg
+)
 
 catkin_package(
     CATKIN_DEPENDS angles costmap_2d dynamic_reconfigure pluginlib roscpp
