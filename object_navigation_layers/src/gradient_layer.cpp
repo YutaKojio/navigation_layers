@@ -71,8 +71,10 @@ void GradientLayer::heightmapGradientCallback(const sensor_msgs::Image::ConstPtr
   heightmap_gradient_ = cv_ptr->image;
   height_ = msg->height;
   width_ = msg->width;
+  listener_.waitForTransform(heightmap_gradient_msg_->header.frame_id, global_frame_,
+                             heightmap_gradient_msg_->header.stamp, ros::Duration(3.0));
   listener_.lookupTransform(heightmap_gradient_msg_->header.frame_id, global_frame_,
-                            ros::Time(0), transform_);
+                            heightmap_gradient_msg_->header.stamp, transform_);
 }
 
 void GradientLayer::updateBounds(double robot_x, double robot_y, double robot_yaw, double* min_x,
@@ -102,8 +104,6 @@ void GradientLayer::updateBounds(double robot_x, double robot_y, double robot_ya
 
   costmap_2d::Costmap2D* costmap = layered_costmap_->getCostmap();
   cv::Mat heightmap_gradient = heightmap_gradient_;
-
-  clock_t start = clock();
 
   tf::Vector3 original_coords;
   tf::Vector3 translation_vector;
@@ -163,9 +163,6 @@ void GradientLayer::updateBounds(double robot_x, double robot_y, double robot_ya
   catch(tf::ExtrapolationException& ex) {
     ROS_ERROR("Extrapolation Error: %s\n", ex.what());
   }
-  clock_t end = clock();
-  const double time = static_cast<double>(end - start) / CLOCKS_PER_SEC * 1000.0;
-  std::cerr << "updateBounds : " << time << " [ms]" << std::endl;
 }
 
 void GradientLayer::updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, int min_j, int max_i, int max_j)
@@ -184,8 +181,6 @@ void GradientLayer::updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, i
 
   if(!layered_costmap_)
     return;
-
-  clock_t start = clock();
 
   // update cost of master layer (with max)
   unsigned char* master_array = master_grid.getCharMap();
@@ -207,12 +202,6 @@ void GradientLayer::updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, i
       it++;
     }
   }
-
-  ROS_WARN("Heightmap Cost Updated");
-  clock_t end = clock();
-  const double time = static_cast<double>(end - start) / CLOCKS_PER_SEC * 1000.0;
-  std::cerr << "updateCosts : " << time << " [ms]" << std::endl;
-
 }
 
 } // end namespace
