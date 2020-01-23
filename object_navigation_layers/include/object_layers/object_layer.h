@@ -11,6 +11,7 @@
 #include <pcl/conversions.h>
 #include <pcl/PointIndices.h>
 #include <jsk_recognition_utils/pcl_conversion_util.h>
+#include <object_navigation_layers/ObjectLayerConfig.h>
 
 namespace object_navigation_layers
 {
@@ -32,8 +33,8 @@ public:
   virtual void matchSize();
 
 private:
-  void reconfigureCB(costmap_2d::GenericPluginConfig &config, uint32_t level);
-  dynamic_reconfigure::Server<costmap_2d::GenericPluginConfig> *dsrv_;
+  void reconfigureCB(object_navigation_layers::ObjectLayerConfig &config, uint32_t level);
+  dynamic_reconfigure::Server<object_navigation_layers::ObjectLayerConfig> *dsrv_;
   void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& msg);
   ros::Subscriber cloud_sub_;
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_;

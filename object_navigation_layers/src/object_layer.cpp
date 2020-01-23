@@ -18,8 +18,8 @@ void ObjectLayer::onInitialize()
   default_value_ = NO_INFORMATION;
   matchSize();
 
-  dsrv_ = new dynamic_reconfigure::Server<costmap_2d::GenericPluginConfig>(nh);
-  dynamic_reconfigure::Server<costmap_2d::GenericPluginConfig>::CallbackType cb = boost::bind(
+  dsrv_ = new dynamic_reconfigure::Server<object_navigation_layers::ObjectLayerConfig>(nh);
+  dynamic_reconfigure::Server<object_navigation_layers::ObjectLayerConfig>::CallbackType cb = boost::bind(
       &ObjectLayer::reconfigureCB, this, _1, _2);
   dsrv_->setCallback(cb);
 
@@ -35,7 +35,7 @@ void ObjectLayer::matchSize()
 }
 
 
-void ObjectLayer::reconfigureCB(costmap_2d::GenericPluginConfig &config, uint32_t level)
+void ObjectLayer::reconfigureCB(object_navigation_layers::ObjectLayerConfig &config, uint32_t level)
 {
   enabled_ = config.enabled;
 }
