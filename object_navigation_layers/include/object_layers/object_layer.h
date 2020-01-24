@@ -38,7 +38,9 @@ private:
   void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& msg);
   ros::Subscriber cloud_sub_;
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_;
-  tf::TransformListener tf_;
+  std::string global_frame_;
+  tf::TransformListener listener_;
+  tf::StampedTransform transform_;
 };
 }
 #endif

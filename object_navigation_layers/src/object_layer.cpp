@@ -24,6 +24,7 @@ void ObjectLayer::onInitialize()
   dsrv_->setCallback(cb);
 
   cloud_sub_ = nh.subscribe("/objects_pointcloud/output", 1, &ObjectLayer::pointCloudCallback, this);
+  global_frame_ = layered_costmap_->getGlobalFrameID();
 }
 
 
@@ -44,6 +45,14 @@ void ObjectLayer::pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& m
 {
   cloud_.reset(new pcl::PointCloud<pcl::PointXYZ>);
   pcl::fromROSMsg(*msg, *cloud_);
+  try {
+    listener_.lookupTransform(msg->header.frame_id, global_frame_,
+                              msg->header.stamp, transform_);
+  }
+  catch (tf2::LookupException &e)
+  {
+    ROS_ERROR("transform error: %s", e.what());
+  }
 }
 
 void ObjectLayer::updateBounds(double robot_x, double robot_y, double robot_yaw, double* min_x,
@@ -55,25 +64,55 @@ void ObjectLayer::updateBounds(double robot_x, double robot_y, double robot_yaw,
   if (!cloud_)
     return;
 
+  if (layered_costmap_->isRolling())
+    updateOrigin(robot_x - getSizeInMetersX() / 2, robot_y - getSizeInMetersY() / 2);
+
+  pcl::PointCloud<pcl::PointXYZ> cloud = *cloud_;
   pcl::PointXYZ pp;
   double mark_x, mark_y;
   unsigned int mx;
   unsigned int my;
+  unsigned int index;
 
-  for (int i = 0; i < cloud_->size(); i++) {
-    pp = cloud_->points[i];
+  costmap_2d::Costmap2D* costmap = layered_costmap_->getCostmap();
 
-    mark_x = pp.x;
-    mark_y = pp.y;
+  tf::Vector3 original_coords;
+  tf::Vector3 translation_vector;
+  tf::Matrix3x3 rotation_matrix;
+  tf::Vector3 target_coords;
 
-    // if(worldToMap(mark_x, mark_y, mx, my)) {
-    //   setCost(mx, my, LETHAL_OBSTACLE);
-    // }
+  try {
+    translation_vector = transform_.getOrigin();
+    rotation_matrix = transform_.getBasis();
 
-    *min_x = std::min(*min_x, mark_x);
-    *min_y = std::min(*min_y, mark_y);
-    *max_x = std::max(*max_x, mark_x);
-    *max_y = std::max(*max_y, mark_y);
+    for (int i = 0; i < cloud.size(); i++) {
+      pp = cloud.points[i];
+
+      original_coords.setValue(pp.x, pp.y, 0.0);
+      target_coords = rotation_matrix.inverse() * (original_coords - translation_vector);
+
+      mark_x = target_coords.x();
+      mark_y = target_coords.y();
+
+      if(costmap->worldToMap(mark_x, mark_y, mx, my)) {
+        index = my * size_x_ + mx;
+        costmap_[index] = LETHAL_OBSTACLE;
+      }
+
+      *min_x = std::min(*min_x, mark_x);
+      *min_y = std::min(*min_y, mark_y);
+      *max_x = std::max(*max_x, mark_x);
+      *max_y = std::max(*max_y, mark_y);
+    }
+  }
+  catch(tf::LookupException& ex) {
+    ROS_ERROR("No Transform available Error: %s\n", ex.what());
+  }
+  catch(tf::ConnectivityException& ex) {
+    ROS_ERROR("Connectivity Error: %s\n", ex.what());
+  }
+  catch(tf::ExtrapolationException& ex) {
+    ROS_ERROR("Extrapolation Error: %s\n", ex.what());
   }
 
 }
@@ -84,45 +123,25 @@ void ObjectLayer::updateCosts(costmap_2d::Costmap2D& master_grid, int min_i, int
   if (!enabled_)
     return;
 
-  if (!cloud_)
-    return;
+  unsigned char* master_array = master_grid.getCharMap();
+  unsigned int span = master_grid.getSizeInCellsX();
 
-  // setCost is for set "current" cost, not for "accumulated" cost
-  // To make accumulated cost map, use grid map ex) CostmapLayer::updateWithMax
+  for (int j = min_j; j < max_j; j++)
+  {
+    unsigned int it = j * span + min_i;
+    for (int i = min_i; i < max_i; i++)
+    {
+      if (costmap_[it] == NO_INFORMATION){
+        it++;
+        continue;
+      }
 
-  pcl::PointXYZ pp;
-  double mark_x, mark_y;
-  unsigned int mx;
-  unsigned int my;
-
-  for (int i = 0; i < cloud_->size(); i++) {
-    pp = cloud_->points[i];
-    mark_x = pp.x;
-    mark_y = pp.y;
-    if(master_grid.worldToMap(mark_x, mark_y, mx, my)) {
-      master_grid.setCost(mx, my, LETHAL_OBSTACLE);
+      unsigned char old_cost = master_array[it];
+      if (old_cost == NO_INFORMATION || old_cost < costmap_[it])
+        master_array[it] = costmap_[it];
+      it++;
     }
   }
-
-  // unsigned char* master_array = master_grid.getCharMap();
-  // unsigned int span = master_grid.getSizeInCellsX();
-
-  // for (int j = min_j; j < max_j; j++)
-  // {
-  //   unsigned int it = j * span + min_i;
-  //   for (int i = min_i; i < max_i; i++)
-  //   {
-  //     if (costmap_[it] == NO_INFORMATION){
-  //       it++;
-  //       continue;
-  //     }
-
-  //     unsigned char old_cost = master_array[it];
-  //     if (old_cost == NO_INFORMATION || old_cost < costmap_[it])
-  //       master_array[it] = costmap_[it];
-  //     it++;
-  //   }
-  // }
 
 }
 
