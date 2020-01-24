@@ -71,10 +71,14 @@ void GradientLayer::heightmapGradientCallback(const sensor_msgs::Image::ConstPtr
   heightmap_gradient_ = cv_ptr->image;
   height_ = msg->height;
   width_ = msg->width;
-  listener_.waitForTransform(heightmap_gradient_msg_->header.frame_id, global_frame_,
-                             heightmap_gradient_msg_->header.stamp, ros::Duration(3.0));
-  listener_.lookupTransform(heightmap_gradient_msg_->header.frame_id, global_frame_,
-                            heightmap_gradient_msg_->header.stamp, transform_);
+  try {
+    listener_.lookupTransform(heightmap_gradient_msg_->header.frame_id, global_frame_,
+                              heightmap_gradient_msg_->header.stamp, transform_);
+  }
+  catch (tf2::LookupException &e)
+  {
+    ROS_ERROR("transform error: %s", e.what());
+  }
 }
 
 void GradientLayer::updateBounds(double robot_x, double robot_y, double robot_yaw, double* min_x,
@@ -91,6 +95,9 @@ void GradientLayer::updateBounds(double robot_x, double robot_y, double robot_ya
 
   if(!layered_costmap_)
     return;
+
+  if (layered_costmap_->isRolling())
+    updateOrigin(robot_x - getSizeInMetersX() / 2, robot_y - getSizeInMetersY() / 2);
 
   double mark_x, mark_y;
   double heightmap_resolution_x;
@@ -123,7 +130,8 @@ void GradientLayer::updateBounds(double robot_x, double robot_y, double robot_ya
         mark_x = target_coords.x();
         mark_y = target_coords.y();
         raw_cost = heightmap_gradient.at<float>(j, i) * cost_scale_ - cost_offset_;
-        cost = std::max(std::min((unsigned char)raw_cost, LETHAL_OBSTACLE), FREE_SPACE);
+        raw_cost = std::min(std::max((double)FREE_SPACE, raw_cost), (double)LETHAL_OBSTACLE);
+        cost = (unsigned char)raw_cost;
 
         if(costmap->worldToMap(mark_x, mark_y, mx, my)) {
           index = my * size_x_ + mx;

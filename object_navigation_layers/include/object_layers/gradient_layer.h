@@ -37,7 +37,6 @@ private:
   ros::Subscriber image_sub_;
   ros::Subscriber config_sub_;
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_;
-  tf::TransformListener tf_;
   std::string global_frame_;
   sensor_msgs::Image::ConstPtr heightmap_gradient_msg_;
   cv::Mat heightmap_gradient_;
