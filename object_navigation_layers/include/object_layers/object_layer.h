@@ -41,6 +41,7 @@ private:
   std::string global_frame_;
   tf::TransformListener listener_;
   tf::StampedTransform transform_;
+  int combination_method_;
 };
 }
 #endif

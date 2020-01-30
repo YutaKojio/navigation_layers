@@ -39,6 +39,7 @@ void ObjectLayer::matchSize()
 void ObjectLayer::reconfigureCB(object_navigation_layers::ObjectLayerConfig &config, uint32_t level)
 {
   enabled_ = config.enabled;
+  combination_method_ = config.combination_method;
 }
 
 void ObjectLayer::pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& msg)
@@ -84,6 +85,14 @@ void ObjectLayer::updateBounds(double robot_x, double robot_y, double robot_yaw,
   try {
     translation_vector = transform_.getOrigin();
     rotation_matrix = transform_.getBasis();
+
+    // Overwrite
+    if (combination_method_ == 0 && cloud.size() > 0) {
+      costmap_ = new unsigned char[size_x_ * size_y_];
+      for (int i = 0; i < size_x_ * size_y_; ++i) {
+        costmap_[i] = NO_INFORMATION;
+      }
+    }
 
     for (int i = 0; i < cloud.size(); i++) {
       pp = cloud.points[i];
