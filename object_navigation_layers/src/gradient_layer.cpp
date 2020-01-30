@@ -8,6 +8,7 @@
 PLUGINLIB_EXPORT_CLASS(object_navigation_layers::GradientLayer, costmap_2d::Layer)
 
 using costmap_2d::LETHAL_OBSTACLE;
+using costmap_2d::INSCRIBED_INFLATED_OBSTACLE;
 using costmap_2d::NO_INFORMATION;
 using costmap_2d::FREE_SPACE;
 
@@ -52,6 +53,8 @@ void GradientLayer::reconfigureCB(object_navigation_layers::GradientLayerConfig 
   cost_scale_ = config.cost_scale;
   cost_offset_ = config.cost_offset;
   combination_method_ = config.combination_method;
+  lethal_th_ = config.lethal_th;
+  inscribed_th_ = config.inscribed_th;
 }
 
 void GradientLayer::configCallback(const jsk_recognition_msgs::HeightmapConfig::ConstPtr& msg)
@@ -130,8 +133,17 @@ void GradientLayer::updateBounds(double robot_x, double robot_y, double robot_ya
         mark_x = target_coords.x();
         mark_y = target_coords.y();
         raw_cost = heightmap_gradient.at<float>(j, i) * cost_scale_ - cost_offset_;
-        raw_cost = std::min(std::max((double)FREE_SPACE, raw_cost), (double)LETHAL_OBSTACLE);
-        cost = (unsigned char)raw_cost;
+        if (raw_cost >= lethal_th_) {
+          cost = LETHAL_OBSTACLE;
+        }
+        else if (raw_cost >= inscribed_th_) {
+          cost = INSCRIBED_INFLATED_OBSTACLE;
+        }
+        else {
+          raw_cost = std::max((double)FREE_SPACE, raw_cost);
+          cost = (unsigned char)raw_cost;
+        }
+        // raw_cost = std::min(std::max((double)FREE_SPACE, raw_cost), (double)LETHAL_OBSTACLE);
 
         if(costmap->worldToMap(mark_x, mark_y, mx, my)) {
           index = my * size_x_ + mx;

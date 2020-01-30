@@ -52,6 +52,8 @@ private:
   double cost_scale_;
   double cost_offset_;
   int combination_method_;
+  double lethal_th_;
+  double inscribed_th_;
 };
 }
 #endif
