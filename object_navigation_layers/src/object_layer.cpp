@@ -1,5 +1,10 @@
 #include <object_layers/object_layer.h>
 #include <pluginlib/class_list_macros.h>
+#include <cv_bridge/cv_bridge.h>
+#include <sensor_msgs/image_encodings.h>
+
+#include <jsk_recognition_utils/pcl_conversion_util.h>
+#include <sensor_msgs/point_cloud2_iterator.h>
 
 PLUGINLIB_EXPORT_CLASS(object_navigation_layers::ObjectLayer, costmap_2d::Layer)
 
@@ -23,8 +28,18 @@ void ObjectLayer::onInitialize()
       &ObjectLayer::reconfigureCB, this, _1, _2);
   dsrv_->setCallback(cb);
 
-  cloud_sub_ = nh.subscribe("/objects_pointcloud/output", 1, &ObjectLayer::pointCloudCallback, this);
+  cloud_sub_.subscribe(nh, "/multisense_local/image_points2_color", 1);
+  label_sub_.subscribe(nh, "/object_label_image", 1);
+
+  async_ = boost::make_shared<message_filters::Synchronizer<ApproximateSyncPolicy> >(3);
+  async_->connectInput(cloud_sub_, label_sub_);
+  async_->registerCallback(
+    boost::bind(&ObjectLayer::labelCloudCallback, this, _1, _2));
+
+  ROS_WARN("Object Layer Initialized!!!");
   global_frame_ = layered_costmap_->getGlobalFrameID();
+
+  pointcloud_pub_ = nh.advertise<sensor_msgs::PointCloud2>("/debug_pointcloud", 1);
 }
 
 
@@ -42,18 +57,26 @@ void ObjectLayer::reconfigureCB(object_navigation_layers::ObjectLayerConfig &con
   combination_method_ = config.combination_method;
 }
 
-void ObjectLayer::pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& msg)
+void ObjectLayer::labelCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud_msg, const sensor_msgs::Image::ConstPtr& label_msg)
 {
+  ROS_WARN("Sync Label Cloud Callback");
   cloud_.reset(new pcl::PointCloud<pcl::PointXYZ>);
-  pcl::fromROSMsg(*msg, *cloud_);
+  pcl::fromROSMsg(*cloud_msg, *cloud_);
   try {
-    listener_.lookupTransform(msg->header.frame_id, global_frame_,
-                              msg->header.stamp, transform_);
+    listener_.lookupTransform(cloud_msg->header.frame_id, global_frame_,
+                              cloud_msg->header.stamp, transform_);
   }
   catch (tf2::LookupException &e)
   {
     ROS_ERROR("transform error: %s", e.what());
   }
+
+  cv_bridge::CvImagePtr cv_ptr;
+  cv_ptr  = cv_bridge::toCvCopy(label_msg, sensor_msgs::image_encodings::MONO8);
+  label_  = cv_ptr->image;
+  height_ = label_msg->height;
+  width_  = label_msg->width;
+  header_ = label_msg->header;
 }
 
 void ObjectLayer::updateBounds(double robot_x, double robot_y, double robot_yaw, double* min_x,
@@ -69,6 +92,7 @@ void ObjectLayer::updateBounds(double robot_x, double robot_y, double robot_yaw,
     updateOrigin(robot_x - getSizeInMetersX() / 2, robot_y - getSizeInMetersY() / 2);
 
   pcl::PointCloud<pcl::PointXYZ> cloud = *cloud_;
+  cv::Mat label = label_;
   pcl::PointXYZ pp;
   double mark_x, mark_y;
   unsigned int mx;
@@ -94,10 +118,34 @@ void ObjectLayer::updateBounds(double robot_x, double robot_y, double robot_yaw,
       }
     }
 
+    // ====== for debug =================================================
+    sensor_msgs::PointCloud2::Ptr cloud_msg(new sensor_msgs::PointCloud2);
+
+    cloud_msg->header = header_;
+    cloud_msg->header.frame_id = global_frame_;
+    // cloud_msg->header.frame_id = "left_camera_optical_frame";
+    cloud_msg->height = height_;
+    cloud_msg->width  = width_;
+    cloud_msg->is_dense = false;
+    cloud_msg->is_bigendian = false;
+
+    sensor_msgs::PointCloud2Modifier pcd_modifier(*cloud_msg);
+    pcd_modifier.setPointCloud2FieldsByString(1, "xyz");
+
+    sensor_msgs::PointCloud2Iterator<float> iter_x(*cloud_msg, "x");
+    sensor_msgs::PointCloud2Iterator<float> iter_y(*cloud_msg, "y");
+    sensor_msgs::PointCloud2Iterator<float> iter_z(*cloud_msg, "z");
+    // ==================================================================
+
+    int u, v;
     for (int i = 0; i < cloud.size(); i++) {
+      u = i % width_;
+      v = i / width_;
+      if (label.at<unsigned char>(v, u) == 0) continue;
+
       pp = cloud.points[i];
 
-      original_coords.setValue(pp.x, pp.y, 0.0);
+      original_coords.setValue(pp.x, pp.y, pp.z);
       target_coords = rotation_matrix.inverse() * (original_coords - translation_vector);
 
       mark_x = target_coords.x();
@@ -105,14 +153,22 @@ void ObjectLayer::updateBounds(double robot_x, double robot_y, double robot_yaw,
 
       if(costmap->worldToMap(mark_x, mark_y, mx, my)) {
         index = my * size_x_ + mx;
-        costmap_[index] = LETHAL_OBSTACLE;
+        costmap_[index] = std::min(label.at<unsigned char>(v, u), LETHAL_OBSTACLE);
       }
+
+      *iter_x = target_coords.x();
+      *iter_y = target_coords.y();
+      *iter_z = target_coords.z();
+      ++iter_x;
+      ++iter_y;
+      ++iter_z;
 
       *min_x = std::min(*min_x, mark_x);
       *min_y = std::min(*min_y, mark_y);
       *max_x = std::max(*max_x, mark_x);
       *max_y = std::max(*max_y, mark_y);
     }
+    pointcloud_pub_.publish(cloud_msg);
   }
   catch(tf::LookupException& ex) {
     ROS_ERROR("No Transform available Error: %s\n", ex.what());
