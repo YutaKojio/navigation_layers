@@ -75,12 +75,20 @@ void GradientLayer::heightmapGradientCallback(const sensor_msgs::Image::ConstPtr
   height_ = msg->height;
   width_ = msg->width;
   try {
+    listener_.waitForTransform(heightmap_gradient_msg_->header.frame_id, global_frame_,
+                               heightmap_gradient_msg_->header.stamp, ros::Duration(5.0));
     listener_.lookupTransform(heightmap_gradient_msg_->header.frame_id, global_frame_,
                               heightmap_gradient_msg_->header.stamp, transform_);
   }
   catch (tf2::LookupException &e)
   {
     ROS_ERROR("transform error: %s", e.what());
+  }
+  catch(tf::ConnectivityException& e) {
+    ROS_ERROR("Connectivity Error: %s\n", e.what());
+  }
+  catch(tf::ExtrapolationException& e) {
+    ROS_ERROR("Extrapolation Error: %s\n", e.what());
   }
 }
 

@@ -63,12 +63,20 @@ void ObjectLayer::labelCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& c
   cloud_.reset(new pcl::PointCloud<pcl::PointXYZ>);
   pcl::fromROSMsg(*cloud_msg, *cloud_);
   try {
+    listener_.waitForTransform(cloud_msg->header.frame_id, global_frame_,
+                               cloud_msg->header.stamp, ros::Duration(1.0));
     listener_.lookupTransform(cloud_msg->header.frame_id, global_frame_,
                               cloud_msg->header.stamp, transform_);
   }
   catch (tf2::LookupException &e)
   {
     ROS_ERROR("transform error: %s", e.what());
+  }
+  catch(tf::ConnectivityException& e) {
+    ROS_ERROR("Connectivity Error: %s\n", e.what());
+  }
+  catch(tf::ExtrapolationException& e) {
+    ROS_ERROR("Extrapolation Error: %s\n", e.what());
   }
 
   cv_bridge::CvImagePtr cv_ptr;
