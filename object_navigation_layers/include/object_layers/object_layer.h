@@ -41,12 +41,12 @@ private:
   void reconfigureCB(object_navigation_layers::ObjectLayerConfig &config, uint32_t level);
   dynamic_reconfigure::Server<object_navigation_layers::ObjectLayerConfig> *dsrv_;
   message_filters::Subscriber<sensor_msgs::PointCloud2> cloud_sub_;
-  message_filters::Subscriber<sensor_msgs::Image> label_sub_;
+  message_filters::Subscriber<sensor_msgs::Image> cost_sub_;
   void pointCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& msg);
-  void labelCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud_msg, const sensor_msgs::Image::ConstPtr& label_msg);
+  void costCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud_msg, const sensor_msgs::Image::ConstPtr& cost_msg);
   boost::shared_ptr<message_filters::Synchronizer<ApproximateSyncPolicy> >async_;
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_;
-  cv::Mat label_;
+  cv::Mat cost_;
   int height_;
   int width_;
   std_msgs::Header header_;
@@ -55,6 +55,7 @@ private:
   tf::StampedTransform transform_;
   int combination_method_;
   ros::Publisher pointcloud_pub_;
+  boost::mutex mutex_;
 };
 }
 #endif

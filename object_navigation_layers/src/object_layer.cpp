@@ -29,12 +29,12 @@ void ObjectLayer::onInitialize()
   dsrv_->setCallback(cb);
 
   cloud_sub_.subscribe(nh, "/multisense_local/image_points2_color", 1);
-  label_sub_.subscribe(nh, "/object_label_image", 1);
+  cost_sub_.subscribe(nh, "/object_cost_image", 1);
 
   async_ = boost::make_shared<message_filters::Synchronizer<ApproximateSyncPolicy> >(3);
-  async_->connectInput(cloud_sub_, label_sub_);
+  async_->connectInput(cloud_sub_, cost_sub_);
   async_->registerCallback(
-    boost::bind(&ObjectLayer::labelCloudCallback, this, _1, _2));
+    boost::bind(&ObjectLayer::costCloudCallback, this, _1, _2));
 
   ROS_WARN("Object Layer Initialized!!!");
   global_frame_ = layered_costmap_->getGlobalFrameID();
@@ -57,9 +57,9 @@ void ObjectLayer::reconfigureCB(object_navigation_layers::ObjectLayerConfig &con
   combination_method_ = config.combination_method;
 }
 
-void ObjectLayer::labelCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud_msg, const sensor_msgs::Image::ConstPtr& label_msg)
+void ObjectLayer::costCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud_msg, const sensor_msgs::Image::ConstPtr& cost_msg)
 {
-  ROS_WARN("Sync Label Cloud Callback");
+  boost::mutex::scoped_lock lock(mutex_);
   cloud_.reset(new pcl::PointCloud<pcl::PointXYZ>);
   pcl::fromROSMsg(*cloud_msg, *cloud_);
   try {
@@ -80,11 +80,11 @@ void ObjectLayer::labelCloudCallback(const sensor_msgs::PointCloud2::ConstPtr& c
   }
 
   cv_bridge::CvImagePtr cv_ptr;
-  cv_ptr  = cv_bridge::toCvCopy(label_msg, sensor_msgs::image_encodings::MONO8);
-  label_  = cv_ptr->image;
-  height_ = label_msg->height;
-  width_  = label_msg->width;
-  header_ = label_msg->header;
+  cv_ptr  = cv_bridge::toCvCopy(cost_msg, sensor_msgs::image_encodings::MONO8);
+  cost_  = cv_ptr->image;
+  height_ = cost_msg->height;
+  width_  = cost_msg->width;
+  header_ = cost_msg->header;
 }
 
 void ObjectLayer::updateBounds(double robot_x, double robot_y, double robot_yaw, double* min_x,
@@ -93,14 +93,19 @@ void ObjectLayer::updateBounds(double robot_x, double robot_y, double robot_yaw,
   if (!enabled_)
     return;
 
-  if (!cloud_)
-    return;
+  pcl::PointCloud<pcl::PointXYZ> cloud;
+  cv::Mat cost;
+  {
+    boost::mutex::scoped_lock lock(mutex_);
+    if (!cloud_)
+      return;
+    cloud = *cloud_;
+    cost = cost_;
+  }
 
   if (layered_costmap_->isRolling())
     updateOrigin(robot_x - getSizeInMetersX() / 2, robot_y - getSizeInMetersY() / 2);
 
-  pcl::PointCloud<pcl::PointXYZ> cloud = *cloud_;
-  cv::Mat label = label_;
   pcl::PointXYZ pp;
   double mark_x, mark_y;
   unsigned int mx;
@@ -120,7 +125,7 @@ void ObjectLayer::updateBounds(double robot_x, double robot_y, double robot_yaw,
 
     // Overwrite
     if (combination_method_ == 0 && cloud.size() > 0) {
-      costmap_ = new unsigned char[size_x_ * size_y_];
+      // costmap_ = new unsigned char[size_x_ * size_y_];
       for (int i = 0; i < size_x_ * size_y_; ++i) {
         costmap_[i] = NO_INFORMATION;
       }
@@ -149,7 +154,7 @@ void ObjectLayer::updateBounds(double robot_x, double robot_y, double robot_yaw,
     for (int i = 0; i < cloud.size(); i++) {
       u = i % width_;
       v = i / width_;
-      if (label.at<unsigned char>(v, u) == 0) continue;
+      if (cost.at<unsigned char>(v, u) == 0) continue;
 
       pp = cloud.points[i];
 
@@ -161,7 +166,7 @@ void ObjectLayer::updateBounds(double robot_x, double robot_y, double robot_yaw,
 
       if(costmap->worldToMap(mark_x, mark_y, mx, my)) {
         index = my * size_x_ + mx;
-        costmap_[index] = std::min(label.at<unsigned char>(v, u), LETHAL_OBSTACLE);
+        costmap_[index] = std::min(cost.at<unsigned char>(v, u), LETHAL_OBSTACLE);
       }
 
       *iter_x = target_coords.x();
