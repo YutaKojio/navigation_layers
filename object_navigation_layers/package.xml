@@ -16,6 +16,7 @@
   <depend>dynamic_reconfigure</depend>
   <depend>pluginlib</depend>
   <depend>roscpp</depend>
+  <depend>pcl_ros</depend>
 
   <export>
     <costmap_2d plugin="${prefix}/costmap_plugins.xml"/>
