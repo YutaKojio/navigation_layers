@@ -1,0 +1,14 @@
+<library path="lib/libobject_layers">
+  <class type="object_navigation_layers::SimpleLayer" base_class_type="costmap_2d::Layer">
+    <description>Demo Layer that adds a point 1 meter in front of the robot</description>
+  </class>
+  <class type="object_navigation_layers::GridLayer" base_class_type="costmap_2d::Layer">
+    <description>Demo Layer that marks all points that were ever one meter in front of the robot</description>
+  </class>
+  <class type="object_navigation_layers::ObjectLayer" base_class_type="costmap_2d::Layer">
+    <description>Layer that marks all points of the target objects</description>
+  </class>
+  <class type="object_navigation_layers::GradientLayer" base_class_type="costmap_2d::Layer">
+    <description>Heightmap Gradient Layer</description>
+  </class>
+</library>
